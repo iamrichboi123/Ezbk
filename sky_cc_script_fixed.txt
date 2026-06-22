@@ -1,3 +1,17 @@
+-- ============================================================
+-- EXECUTOR COMPATIBILITY SHIM
+-- Older Delta builds expose task as a table but leave task.wait
+-- nil; or may not have the task library at all. Fall back to the
+-- legacy Roblox globals so every call site below still works.
+-- ============================================================
+if not task then task = {} end
+if not task.wait  then task.wait  = wait  end
+if not task.spawn then task.spawn = spawn end
+if not task.delay then task.delay = function(n, f) spawn(function() wait(n); f() end) end end
+-- Guard file I/O globals (not all executors expose these)
+if not readfile  then readfile  = function() return nil end end
+if not writefile then writefile = function() end end
+
 local Players = game:GetService("Players")
 local UserInputService = game:GetService("UserInputService")
 local RunService = game:GetService("RunService")
@@ -11,7 +25,7 @@ local player = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
 
 -- ============================================================
--- SKY UI THEME — Pure Black / Sleek White
+-- SKY UI THEME - Pure Black / Sleek White
 -- ============================================================
 local SKY = {
     BG      = Color3.fromRGB(0,   0,   0),
@@ -198,7 +212,7 @@ ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 ScreenGui.Parent = playerGui
 
 -- ============================================================
--- HUD BAR — sky.cc branding, minimal, clean
+-- HUD BAR - sky.cc branding, minimal, clean
 -- ============================================================
 local HudBar = Instance.new("Frame")
 HudBar.Size = UDim2.new(0, 260, 0, 72)
@@ -313,10 +327,13 @@ HudPing.Parent = HudBar
 
 -- FPS/Ping update loop
 RunService.Heartbeat:Connect(function(dt)
-    local fps = (dt > 0) and math.floor(1 / dt + 0.5) or 0
-    HudFPS.Text = "FPS: " .. fps
-    local ping = player:GetNetworkPing and math.floor(player:GetNetworkPing() * 1000) or 0
-    HudPing.Text = "PING: " .. ping .. "MS"
+    pcall(function()
+        local fps = (dt > 0) and math.floor(1 / dt + 0.5) or 0
+        HudFPS.Text = "FPS: " .. fps
+        local hasPing = type(player.GetNetworkPing) == "function"
+        local ping = hasPing and math.floor(player:GetNetworkPing() * 1000) or 0
+        HudPing.Text = "PING: " .. ping .. "MS"
+    end)
 end)
 
 -- ============================================================
@@ -356,7 +373,7 @@ local StealBarTopLabel = Instance.new("TextLabel")
 StealBarTopLabel.Size = UDim2.new(0, 340, 0, 18)
 StealBarTopLabel.Position = UDim2.new(0.5, -170, 1, -62)
 StealBarTopLabel.BackgroundTransparency = 1
-StealBarTopLabel.Text = "▶ FLASH PROGRESS"
+StealBarTopLabel.Text = "> FLASH PROGRESS"
 StealBarTopLabel.TextColor3 = SKY.TEXT
 StealBarTopLabel.Font = Enum.Font.GothamBold
 StealBarTopLabel.TextSize = 11
@@ -389,7 +406,7 @@ BarPercentLabel.ZIndex = 3
 BarPercentLabel.Parent = StealBarInner
 
 -- ============================================================
--- MAIN PANEL — Sky UI style
+-- MAIN PANEL - Sky UI style
 -- ============================================================
 local MAIN_FULL_H = 420
 local MAIN_MINI_H = 44
@@ -533,7 +550,7 @@ LockBtn.Size = UDim2.new(0, 24, 0, 24)
 LockBtn.Position = UDim2.new(0, 6, 0.5, -12)
 LockBtn.BackgroundColor3 = SKY.SURF2
 LockBtn.BorderSizePixel = 0
-LockBtn.Text = "🔓"
+LockBtn.Text = "[OPEN]"
 LockBtn.TextSize = 11
 LockBtn.Font = Enum.Font.GothamBold
 LockBtn.TextColor3 = SKY.DIM
@@ -546,10 +563,10 @@ do local s = Instance.new("UIStroke"); s.Color = Color3.fromRGB(60,60,60); s.Thi
 LockBtn.MouseButton1Click:Connect(function()
     guiLocked = not guiLocked
     if guiLocked then
-        LockBtn.Text = "🔒"; LockBtn.TextColor3 = ORANGE
+        LockBtn.Text = "[LOCK]"; LockBtn.TextColor3 = ORANGE
         TweenService:Create(LockBtn, TweenInfo.new(0.15), {BackgroundColor3 = Color3.fromRGB(30, 20, 0)}):Play()
     else
-        LockBtn.Text = "🔓"; LockBtn.TextColor3 = SKY.DIM
+        LockBtn.Text = "[OPEN]"; LockBtn.TextColor3 = SKY.DIM
         TweenService:Create(LockBtn, TweenInfo.new(0.15), {BackgroundColor3 = SKY.SURF2}):Play()
     end
 end)
@@ -603,8 +620,8 @@ local function makeCtrlBtn(text, xOff, w)
     return btn
 end
 
-local SettingsBtn  = makeCtrlBtn("⚙", -30, 24); SettingsBtn.Visible = false
-local MinimizeBtn  = makeCtrlBtn("—", -30, 24)
+local SettingsBtn  = makeCtrlBtn("[S]", -30, 24); SettingsBtn.Visible = false
+local MinimizeBtn  = makeCtrlBtn("-", -30, 24)
 
 local minimized = false
 MinimizeBtn.MouseButton1Click:Connect(function()
@@ -612,7 +629,7 @@ MinimizeBtn.MouseButton1Click:Connect(function()
     TweenService:Create(Main, TweenInfo.new(0.22, Enum.EasingStyle.Quart), {
         Size = UDim2.new(0, 270, 0, minimized and MAIN_MINI_H or MAIN_FULL_H)
     }):Play()
-    MinimizeBtn.Text = minimized and "▶" or "—"
+    MinimizeBtn.Text = minimized and ">" or "-"
 end)
 
 -- Dragging
@@ -894,7 +911,7 @@ local StatusLabel = Instance.new("TextLabel")
 StatusLabel.Size = UDim2.new(0.5, 0, 1, 0)
 StatusLabel.Position = UDim2.new(0.5, 0, 0, 0)
 StatusLabel.BackgroundTransparency = 1
-StatusLabel.Text = S.flashEnabled and "● ON" or "● OFF"
+StatusLabel.Text = S.flashEnabled and "* ON" or "* OFF"
 StatusLabel.TextColor3 = S.flashEnabled and GREEN or RED
 StatusLabel.Font = Enum.Font.GothamBold
 StatusLabel.TextSize = 10
@@ -939,7 +956,7 @@ local AlignCamLabel = Instance.new("TextLabel")
 AlignCamLabel.Size = UDim2.new(1, -70, 1, 0)
 AlignCamLabel.Position = UDim2.new(0, 14, 0, 0)
 AlignCamLabel.BackgroundTransparency = 1
-AlignCamLabel.Text = "📷  ALIGN CAMERA"
+AlignCamLabel.Text = "[CAM]  ALIGN CAMERA"
 AlignCamLabel.TextColor3 = SKY.ACCENT2
 AlignCamLabel.Font = Enum.Font.GothamBold
 AlignCamLabel.TextSize = 12
@@ -987,10 +1004,10 @@ local _listeningAlignKey = false
 AlignCamButton.MouseButton1Click:Connect(function()
     if _listeningAlignKey then return end
     alignCamera()
-    AlignCamLabel.Text = "📷  ALIGNED ✓"; AlignCamLabel.TextColor3 = GREEN
+    AlignCamLabel.Text = "[CAM]  ALIGNED OK"; AlignCamLabel.TextColor3 = GREEN
     TweenService:Create(AlignCamButton, TweenInfo.new(0.1), {BackgroundColor3 = Color3.fromRGB(10, 30, 10)}):Play()
     task.delay(1.2, function()
-        AlignCamLabel.Text = "📷  ALIGN CAMERA"; AlignCamLabel.TextColor3 = SKY.ACCENT2
+        AlignCamLabel.Text = "[CAM]  ALIGN CAMERA"; AlignCamLabel.TextColor3 = SKY.ACCENT2
         TweenService:Create(AlignCamButton, TweenInfo.new(0.2), {BackgroundColor3 = SKY.SURF}):Play()
     end)
 end)
@@ -998,7 +1015,7 @@ end)
 AlignCamButton.MouseButton2Click:Connect(function()
     if _listeningAlignKey then return end
     _listeningAlignKey = true
-    AlignCamLabel.Text = "⌨  PRESS A KEY..."; AlignCamLabel.TextColor3 = GREEN
+    AlignCamLabel.Text = "[KEY]  PRESS A KEY..."; AlignCamLabel.TextColor3 = GREEN
     AlignKeyLbl.Text = "..."
     TweenService:Create(AlignKeyPill, TweenInfo.new(0.1), {BackgroundColor3 = Color3.fromRGB(10, 40, 15)}):Play()
     TweenService:Create(AlignCamButton, TweenInfo.new(0.1), {BackgroundColor3 = Color3.fromRGB(8, 35, 15)}):Play()
@@ -1010,7 +1027,7 @@ AlignCamButton.MouseButton2Click:Connect(function()
         if input.KeyCode == Enum.KeyCode.Escape then
             S.alignCamKey = "None"; saveSettings()
             AlignKeyLbl.Text = "R-BIND"; AlignKeyLbl.TextColor3 = SKY.ACCENT2
-            AlignCamLabel.Text = "📷  ALIGN CAMERA"; AlignCamLabel.TextColor3 = SKY.ACCENT2
+            AlignCamLabel.Text = "[CAM]  ALIGN CAMERA"; AlignCamLabel.TextColor3 = SKY.ACCENT2
             TweenService:Create(AlignKeyPill, TweenInfo.new(0.15), {BackgroundColor3 = SKY.SURF2}):Play()
             TweenService:Create(AlignCamButton, TweenInfo.new(0.15), {BackgroundColor3 = SKY.SURF}):Play()
             return
@@ -1019,7 +1036,7 @@ AlignCamButton.MouseButton2Click:Connect(function()
         local display = input.KeyCode.Name
         if #display > 5 then display = display:sub(1, 5) end
         AlignKeyLbl.Text = display; AlignKeyLbl.TextColor3 = GREEN
-        AlignCamLabel.Text = "📷  ALIGN CAMERA"; AlignCamLabel.TextColor3 = SKY.ACCENT2
+        AlignCamLabel.Text = "[CAM]  ALIGN CAMERA"; AlignCamLabel.TextColor3 = SKY.ACCENT2
         TweenService:Create(AlignKeyPill, TweenInfo.new(0.1), {BackgroundColor3 = Color3.fromRGB(10, 50, 20)}):Play()
         TweenService:Create(AlignCamButton, TweenInfo.new(0.15), {BackgroundColor3 = SKY.SURF}):Play()
         task.delay(0.8, function()
@@ -1098,7 +1115,7 @@ local PerfHeader = Instance.new("TextLabel")
 PerfHeader.Size = UDim2.new(1, 0, 0, 18)
 PerfHeader.Position = UDim2.new(0, 0, 0, 0)
 PerfHeader.BackgroundTransparency = 1
-PerfHeader.Text = "— PERFORMANCE —"
+PerfHeader.Text = "- PERFORMANCE -"
 PerfHeader.TextColor3 = SKY.ACCENT2
 PerfHeader.Font = Enum.Font.GothamBold
 PerfHeader.TextSize = 10
@@ -1129,7 +1146,7 @@ local ExtrasHeader = Instance.new("TextLabel")
 ExtrasHeader.Size = UDim2.new(1, 0, 0, 18)
 ExtrasHeader.Position = UDim2.new(0, 0, 0, 0)
 ExtrasHeader.BackgroundTransparency = 1
-ExtrasHeader.Text = "— MOVEMENT —"
+ExtrasHeader.Text = "- MOVEMENT -"
 ExtrasHeader.TextColor3 = SKY.ACCENT2
 ExtrasHeader.Font = Enum.Font.GothamBold
 ExtrasHeader.TextSize = 10
@@ -1153,7 +1170,7 @@ local ESPHeader = Instance.new("TextLabel")
 ESPHeader.Size = UDim2.new(1, 0, 0, 18)
 ESPHeader.Position = UDim2.new(0, 0, 0, 116)
 ESPHeader.BackgroundTransparency = 1
-ESPHeader.Text = "— ESP —"
+ESPHeader.Text = "- ESP -"
 ESPHeader.TextColor3 = SKY.ACCENT2
 ESPHeader.Font = Enum.Font.GothamBold
 ESPHeader.TextSize = 10
@@ -1215,7 +1232,7 @@ ExtrasTabBtn.MouseButton1Click:Connect(function() showTab("extras") end)
 SettingsTabBtn.MouseButton1Click:Connect(function() showTab("settings") end)
 
 -- ============================================================
--- SETTINGS SIDE PANEL (⚙)
+-- SETTINGS SIDE PANEL ([S])
 -- ============================================================
 local settingsOpen = false
 local SettingsPanel = Instance.new("Frame")
@@ -1245,7 +1262,7 @@ local SPTitleLbl = Instance.new("TextLabel")
 SPTitleLbl.Size = UDim2.new(1, -40, 1, 0)
 SPTitleLbl.Position = UDim2.new(0, 12, 0, 0)
 SPTitleLbl.BackgroundTransparency = 1
-SPTitleLbl.Text = "⚙  SETTINGS"
+SPTitleLbl.Text = "[S]  SETTINGS"
 SPTitleLbl.TextColor3 = SKY.TEXT
 SPTitleLbl.Font = Enum.Font.GothamBold
 SPTitleLbl.TextSize = 13
@@ -1258,7 +1275,7 @@ SPCloseBtn.Size = UDim2.new(0, 22, 0, 22)
 SPCloseBtn.Position = UDim2.new(1, -28, 0.5, -11)
 SPCloseBtn.BackgroundColor3 = Color3.fromRGB(160, 40, 40)
 SPCloseBtn.BorderSizePixel = 0
-SPCloseBtn.Text = "✕"
+SPCloseBtn.Text = "X"
 SPCloseBtn.TextColor3 = SKY.TEXT
 SPCloseBtn.Font = Enum.Font.GothamBold
 SPCloseBtn.TextSize = 12
@@ -1778,7 +1795,7 @@ do
         lbl.TextColor3 = SKY.DIM; statusLbl.Text = "..."
         task.spawn(function()
             local removed = applyAntiLag()
-            lbl.TextColor3 = GREEN; statusLbl.Text = "✓ " .. removed; statusLbl.TextColor3 = GREEN
+            lbl.TextColor3 = GREEN; statusLbl.Text = "OK " .. removed; statusLbl.TextColor3 = GREEN
             task.wait(2.5)
             lbl.Text = "Anti-Lag Clean"; lbl.TextColor3 = SKY.TEXT
             statusLbl.Text = "TAP"; statusLbl.TextColor3 = SKY.ACCENT2; lagCleaning = false
@@ -1801,7 +1818,7 @@ do
     local bindBtn = Instance.new("TextButton")
     bindBtn.Size = UDim2.new(1, -28, 0, 22); bindBtn.Position = UDim2.new(0, 14, 0, 34)
     bindBtn.BackgroundColor3 = SKY.SURF2; bindBtn.BorderSizePixel = 0
-    bindBtn.Text = "▶ CLICK TO REBIND"; bindBtn.TextColor3 = SKY.ACCENT2
+    bindBtn.Text = "> CLICK TO REBIND"; bindBtn.TextColor3 = SKY.ACCENT2
     bindBtn.Font = Enum.Font.GothamBold; bindBtn.TextSize = 10; bindBtn.ZIndex = 12; bindBtn.Parent = row
     SkyCorner(bindBtn, 6)
     do local s = Instance.new("UIStroke"); s.Color = Color3.fromRGB(60,60,60); s.Thickness = 1; s.Transparency = 0.3; s.Parent = bindBtn end
@@ -1810,22 +1827,22 @@ do
         if _listeningForKey then return end
         if rebindConn then rebindConn:Disconnect(); rebindConn = nil end
         _listeningForKey = true
-        bindBtn.Text = "⌨ PRESS A KEY..."; bindBtn.TextColor3 = GREEN
+        bindBtn.Text = "[KEY] PRESS A KEY..."; bindBtn.TextColor3 = GREEN
         TweenService:Create(bindBtn, TweenInfo.new(0.1), {BackgroundColor3 = Color3.fromRGB(10, 40, 15)}):Play()
         rebindConn = UserInputService.InputBegan:Connect(function(input, gp)
             if gp then return end
             if input.UserInputType ~= Enum.UserInputType.Keyboard then return end
             rebindConn:Disconnect(); rebindConn = nil; _listeningForKey = false
             if input.KeyCode == Enum.KeyCode.Escape then
-                bindBtn.Text = "▶ CLICK TO REBIND"; bindBtn.TextColor3 = SKY.ACCENT2
+                bindBtn.Text = "> CLICK TO REBIND"; bindBtn.TextColor3 = SKY.ACCENT2
                 TweenService:Create(bindBtn, TweenInfo.new(0.1), {BackgroundColor3 = SKY.SURF2}):Play()
                 return
             end
             S.hideShowKey = input.KeyCode.Name; saveSettings()
             keyLbl.Text = "KEY: " .. input.KeyCode.Name
-            bindBtn.Text = "✓ " .. input.KeyCode.Name; bindBtn.TextColor3 = GREEN
+            bindBtn.Text = "OK " .. input.KeyCode.Name; bindBtn.TextColor3 = GREEN
             task.delay(1.8, function()
-                bindBtn.Text = "▶ CLICK TO REBIND"; bindBtn.TextColor3 = SKY.ACCENT2
+                bindBtn.Text = "> CLICK TO REBIND"; bindBtn.TextColor3 = SKY.ACCENT2
                 TweenService:Create(bindBtn, TweenInfo.new(0.1), {BackgroundColor3 = SKY.SURF2}):Play()
             end)
         end)
@@ -1839,7 +1856,7 @@ do
     row.BorderSizePixel = 0; row.ZIndex = 11; row.Parent = SPScroll
     SkyCorner(row, 10)
     local lbl = Instance.new("TextLabel"); lbl.Size = UDim2.new(1, -14, 1, 0); lbl.Position = UDim2.new(0, 14, 0, 0)
-    lbl.BackgroundTransparency = 1; lbl.Text = "↺ Reset To Default"
+    lbl.BackgroundTransparency = 1; lbl.Text = "< Reset To Default"
     lbl.TextColor3 = RED; lbl.Font = Enum.Font.GothamBold; lbl.TextSize = 12
     lbl.TextXAlignment = Enum.TextXAlignment.Left; lbl.ZIndex = 12; lbl.Parent = row
     local btn = Instance.new("TextButton"); btn.Size = UDim2.new(1, 0, 1, 0); btn.BackgroundTransparency = 1; btn.Text = ""
@@ -1849,7 +1866,7 @@ do
         task.spawn(function()
             for k, v in pairs(DEFAULT_SETTINGS) do S[k] = v end; saveSettings()
             TweenService:Create(FlashButton, TweenInfo.new(0.15), {BackgroundColor3 = Color3.fromRGB(10, 30, 10)}):Play()
-            FlashLabel.Text = "FLASH TP: ON"; FlashLabel.TextColor3 = GREEN; StatusLabel.Text = "● ON"; StatusLabel.TextColor3 = GREEN
+            FlashLabel.Text = "FLASH TP: ON"; FlashLabel.TextColor3 = GREEN; StatusLabel.Text = "* ON"; StatusLabel.TextColor3 = GREEN
             TweenService:Create(GiantButton, TweenInfo.new(0.15), {BackgroundColor3 = Color3.fromRGB(35, 10, 10)}):Play()
             GiantLabel.Text = "AUTO GIANT POTION: OFF"; GiantLabel.TextColor3 = RED
             TweenService:Create(AntiRagButton, TweenInfo.new(0.15), {BackgroundColor3 = SKY.SURF2}):Play()
@@ -1870,8 +1887,8 @@ do
             SliderFill.Size = UDim2.new(0.91, 0, 1, 0); SliderKnob.Position = UDim2.new(0.91, 0, 0.5, 0)
             TrigLabel.Text = "TRIGGER: 91%"; TriggerStatLbl.Text = "TRIGGER: 91%"
             applyFPSBooster(false); applyStretchRez(false)
-            lbl.Text = "✓ Reset Done"; lbl.TextColor3 = GREEN
-            task.wait(2); lbl.Text = "↺ Reset To Default"; lbl.TextColor3 = RED
+            lbl.Text = "OK Reset Done"; lbl.TextColor3 = GREEN
+            task.wait(2); lbl.Text = "< Reset To Default"; lbl.TextColor3 = RED
         end)
     end)
 end
@@ -2027,11 +2044,11 @@ FlashButton.MouseButton1Click:Connect(function()
     setFlashSwitch(S.flashEnabled)
     if S.flashEnabled then
         FlashLabel.Text = "FLASH TP: ON"; FlashLabel.TextColor3 = GREEN
-        StatusLabel.Text = "● ON"; StatusLabel.TextColor3 = GREEN
+        StatusLabel.Text = "* ON"; StatusLabel.TextColor3 = GREEN
         TweenService:Create(FlashButton, TweenInfo.new(0.15), {BackgroundColor3 = Color3.fromRGB(10, 30, 10)}):Play()
     else
         FlashLabel.Text = "FLASH TP: OFF"; FlashLabel.TextColor3 = RED
-        StatusLabel.Text = "● OFF"; StatusLabel.TextColor3 = RED
+        StatusLabel.Text = "* OFF"; StatusLabel.TextColor3 = RED
         TweenService:Create(FlashButton, TweenInfo.new(0.15), {BackgroundColor3 = Color3.fromRGB(30, 10, 10)}):Play()
     end
 end)
@@ -2199,8 +2216,8 @@ player.CharacterAdded:Connect(function(char)
     local origPingCl = HudPing.TextColor3
     HudFPS.TextColor3  = SKY.GREEN
     HudPing.TextColor3 = SKY.GREEN
-    HudFPS.Text  = "ALIVE ✓"
-    HudPing.Text = "sky.cc ✓"
+    HudFPS.Text  = "ALIVE OK"
+    HudPing.Text = "sky.cc OK"
     task.wait(1.2)
     HudFPS.TextColor3  = origFpsCl
     HudPing.TextColor3 = origPingCl
@@ -2459,7 +2476,7 @@ AMinBtn.Size = UDim2.new(0, 18, 0, 18)
 AMinBtn.Position = UDim2.new(1, -44, 0.5, -9)
 AMinBtn.BackgroundColor3 = SKY.SURF2
 AMinBtn.BorderSizePixel = 0
-AMinBtn.Text = "—"
+AMinBtn.Text = "-"
 AMinBtn.TextColor3 = SKY.DIM
 AMinBtn.Font = Enum.Font.GothamBold
 AMinBtn.TextSize = 9
@@ -2473,7 +2490,7 @@ ACloseBtn.Size = UDim2.new(0, 18, 0, 18)
 ACloseBtn.Position = UDim2.new(1, -22, 0.5, -9)
 ACloseBtn.BackgroundColor3 = Color3.fromRGB(160, 40, 40)
 ACloseBtn.BorderSizePixel = 0
-ACloseBtn.Text = "✕"
+ACloseBtn.Text = "X"
 ACloseBtn.TextColor3 = SKY.TEXT
 ACloseBtn.Font = Enum.Font.GothamBold
 ACloseBtn.TextSize = 9
@@ -2510,7 +2527,7 @@ AMinBtn.MouseButton1Click:Connect(function()
     TweenService:Create(ActionsFrame, TweenInfo.new(0.2, Enum.EasingStyle.Quart), {
         Size = UDim2.new(0, 160, 0, actionsMinimized and ACTIONS_TITLE_H or ACTIONS_FULL_H)
     }):Play()
-    AMinBtn.Text = actionsMinimized and "▶" or "—"
+    AMinBtn.Text = actionsMinimized and ">" or "-"
 end)
 
 local function makeActionBtn(text, yPos, col, tc)
@@ -2553,7 +2570,7 @@ end)
 end)()
 
 -- ============================================================
--- BRAINROT PANEL — Full Sky UI restyle, massively improved
+-- BRAINROT PANEL - Full Sky UI restyle, massively improved
 -- ============================================================
 ;(function()
 local BRP_MATCH_DIST = 9
@@ -2964,7 +2981,7 @@ local function brp_makeViewport(parent, data)
 end
 
 -- ============================================================
--- BRAINROT PANEL — Sky UI full restyle
+-- BRAINROT PANEL - Sky UI full restyle
 -- ============================================================
 local BrainrotPanel = Instance.new("Frame")
 BrainrotPanel.Name = "BrainrotPanel"
@@ -3073,7 +3090,7 @@ BRPClose.Size = UDim2.new(0, 24, 0, 24)
 BRPClose.Position = UDim2.new(1, -30, 0.5, -12)
 BRPClose.BackgroundColor3 = Color3.fromRGB(140, 35, 35)
 BRPClose.BorderSizePixel = 0
-BRPClose.Text = "✕"
+BRPClose.Text = "X"
 BRPClose.TextColor3 = SKY.TEXT
 BRPClose.Font = Enum.Font.GothamBold
 BRPClose.TextSize = 11
@@ -3102,7 +3119,7 @@ BRPRefresh.Position = UDim2.new(0, 0, 0, 0)
 BRPRefresh.BackgroundColor3 = SKY.SURF2
 BRPRefresh.BackgroundTransparency = 0.1
 BRPRefresh.BorderSizePixel = 0
-BRPRefresh.Text = "↻  REFRESH"
+BRPRefresh.Text = ">  REFRESH"
 BRPRefresh.TextColor3 = SKY.TEXT
 BRPRefresh.Font = Enum.Font.GothamBold
 BRPRefresh.TextSize = 11
@@ -3278,7 +3295,7 @@ local function brp_makeRow(entry)
         tpBtn.BackgroundColor3 = SKY.SURF2
         tpBtn.BackgroundTransparency = 0
         tpBtn.BorderSizePixel = 0
-        tpBtn.Text = "▶ TELEPORT"
+        tpBtn.Text = "> TELEPORT"
         tpBtn.TextColor3 = SKY.ACCENT2
         tpBtn.Font = Enum.Font.GothamBold
         tpBtn.TextSize = 10
@@ -3297,9 +3314,9 @@ local function brp_makeRow(entry)
             tpBtn.Text = "MOVING..."; tpBtn.TextColor3 = T.Accent
             task.spawn(function()
                 brp_teleport(entry)
-                tpBtn.Text = "✓ DONE"; tpBtn.TextColor3 = T.Good
+                tpBtn.Text = "OK DONE"; tpBtn.TextColor3 = T.Good
                 task.wait(1.5)
-                tpBtn.Text = "▶ TELEPORT"; tpBtn.TextColor3 = SKY.ACCENT2
+                tpBtn.Text = "> TELEPORT"; tpBtn.TextColor3 = SKY.ACCENT2
             end)
         end)
     end
@@ -3350,7 +3367,7 @@ local function brp_populateRows(plot)
         for _, e in ipairs(entries) do brp_makeRow(e) end
         local filled = 0
         for _, e in ipairs(entries) do if not e.empty then filled = filled + 1 end end
-        BRPStatus.Text = filled .. "/" .. #entries .. " slots • " .. brp_ownerName(plot)
+        BRPStatus.Text = filled .. "/" .. #entries .. " slots * " .. brp_ownerName(plot)
         BRPStatus.TextColor3 = T.Good
     end)
 end
@@ -3386,7 +3403,7 @@ local function brp_showPlotPicker()
         pLbl.Size = UDim2.new(1, -60, 1, 0)
         pLbl.Position = UDim2.new(0, 12, 0, 0)
         pLbl.BackgroundTransparency = 1
-        pLbl.Text = (isMe and "★ " or "") .. owner
+        pLbl.Text = (isMe and "* " or "") .. owner
         pLbl.TextColor3 = isMe and GREEN or SKY.TEXT
         pLbl.Font = Enum.Font.GothamBold
         pLbl.TextSize = 12
@@ -3421,7 +3438,7 @@ end
 
 -- Refresh button
 BRPRefresh.MouseButton1Click:Connect(function()
-    BRPRefresh.Text = "↻  SCANNING"
+    BRPRefresh.Text = ">  SCANNING"
     BRPRefresh.TextColor3 = T.Accent
     TweenService:Create(BRPRefresh, TweenInfo.new(0.1), {BackgroundColor3 = SKY.SURF3}):Play()
     task.spawn(function()
@@ -3431,7 +3448,7 @@ BRPRefresh.MouseButton1Click:Connect(function()
             brp_showPlotPicker()
         end
         task.wait(0.4)
-        BRPRefresh.Text = "↻  REFRESH"
+        BRPRefresh.Text = ">  REFRESH"
         BRPRefresh.TextColor3 = SKY.TEXT
         TweenService:Create(BRPRefresh, TweenInfo.new(0.1), {BackgroundColor3 = SKY.SURF2}):Play()
     end)
